@@ -1,0 +1,117 @@
+---
+title: "Machine Learning Course Project"
+author: "Rodrigo Prado"
+date: "25/8/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Prediction Assignment Writeup
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+## What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Libraries and reproducibility
+
+```{r libraries}
+library(caret)
+library(dplyr)
+library(randomForest)
+set.seed(4242)
+```
+
+## Getting the data
+
+The training data:
+```{r load_data}
+train_CSV <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+test_CSV <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+
+```
+
+
+## Clean training data 
+We perform a basic cleaning of the data, first we remove columns that have no relationship with the problem. Then we remove columns without vriation 
+```{r clean_data}
+
+# Delete columns: user_name, raw_timestamp_part_1, raw_timestamp_part_,2 cvtd_timestamp, new_window, and  num_window (1 to 7). 
+train_CSV <- train_CSV[, -c(1:7)]
+
+# Delete columns with no variation
+NZV <- nearZeroVar(train_CSV, saveMetrics = TRUE)
+train_CSV <- train_CSV[, !NZV$nzv]
+
+# Delete columns with high percentage of NA values
+na_percent <- apply(train_CSV, 2, function(x) sum(is.na(x)))/nrow(train_CSV)
+train_CSV <- train_CSV[!(na_percent>0.95)]
+```
+
+## Cross validation
+We will use 70% of the training data to build the models and the remaining 30% will be used to test the models. Once the most accurate model(s) is chosen we will test it against the actual testing dataset.
+```{r split_data}
+inTrain <- createDataPartition(y = train_CSV$classe, list = FALSE, p=0.7)
+trainData <- train_CSV[inTrain,]
+testData <- train_CSV[-inTrain,]
+```
+
+## Modeling
+Due to the high number of predictors we will apply PCA and Random Forest.
+
+### PCA
+To obtain a threshold of 98% of variance, we need 33 components.
+```{r pca_calculate_thresh}
+preProc <- preProcess(trainData[,1:53],method="pca",thresh=.98)
+trainPCA <- predict(preProc, trainData[,1:53])
+```
+
+### Random Forest
+Now we apply a random forest model and then we test it against our training subset for testing.
+```{r randomForest}
+mod_rf <- randomForest(classe ~ ., data = trainPCA)
+```
+
+### Test against testing set
+```{r random_forest_test}
+testingPCA <- predict(preProc, testData[,1:53])
+confusionMatrix(testData$classe, predict(mod_rf, testingPCA))
+```
+
+## Prediction
+We apply the same transformations to the testing set and then perform our prediction
+
+```{r, results=FALSE, real_validation}
+# Delete columns: user_name, raw_timestamp_part_1, raw_timestamp_part_,2 cvtd_timestamp, new_window, and  num_window (1 to 7). 
+test_CSV <- test_CSV[, -c(1:7)]
+
+# Delete columns with no variation
+NZV <- nearZeroVar(test_CSV, saveMetrics = TRUE)
+test_CSV <- test_CSV[, !NZV$nzv]
+
+# Delete columns with high percentage of NA values
+na_percent <- apply(test_CSV, 2, function(x) sum(is.na(x)))/nrow(test_CSV)
+test_CSV <- test_CSV[!(na_percent>0.95)]
+
+validationPCA <- predict(preProc, test_CSV[,1:53])
+predict(mod_rf, validationPCA)
+```
+The prediction output is suppressed.
